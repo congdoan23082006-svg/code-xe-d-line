@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web BLE PID Dashboard</title>
+    <style>
+        :root {
+            --bg: #0b111a;
+            --glass: rgba(255, 255, 255, 0.05);
+            --accent: #00d2ff;
+            --text: #e0e6ed;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: radial-gradient(circle at center, #1e293b 0%, #0b111a 100%);
+        }
+        #terminal {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            height: 100px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 15px;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            overflow-y: auto;
+            color: #4ade80;
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+        }
+        .container {
+            background: var(--glass);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 40px;
+            border-radius: 40px;
+            width: 320px;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.8);
+            text-align: center;
+            max-height: calc(100vh - 220px);
+            overflow-y: auto;
+            margin-bottom: 160px;
+        }
+        .btn-connect {
+            background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+            border: none;
+            padding: 16px 32px;
+            border-radius: 20px;
+            color: white;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 10px 25px rgba(0, 210, 255, 0.4);
+            margin-bottom: 35px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn-connect:hover { transform: translateY(-3px); box-shadow: 0 15px 30px rgba(0, 210, 255, 0.5); }
+        .btn-connect.connected {
+            background: linear-gradient(135deg, #f43f5e 0%, #be123c 100%);
+            box-shadow: 0 10px 25px rgba(244, 63, 94, 0.4);
+        }
+        .slider-box {
+            margin-bottom: 28px;
+            text-align: left;
+        }
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 700; letter-spacing: 1.5px; }
+        .val { font-weight: 800; color: var(--accent); font-family: monospace; font-size: 1.1rem; }
+        input[type=range] { 
+            width: 100%; 
+            -webkit-appearance: none; 
+            background: rgba(255,255,255,0.1); 
+            height: 6px; 
+            border-radius: 10px; 
+            outline: none; 
+            touch-action: none; /* Khóa cuộn trang khi đang kéo thanh trượt */
+        }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; background: white; border-radius: 50%; border: 4px solid var(--accent); cursor: pointer; box-shadow: 0 0 15px var(--accent); }
+        
+        @keyframes pulseGlow {
+            from { box-shadow: 0 0 5px rgba(0, 210, 255, 0); }
+            to { box-shadow: 0 0 25px rgba(0, 210, 255, 0.6); }
+        }
+        .btn-send {
+            width: 100%;
+            padding: 18px;
+            background: rgba(255,255,255,0.01);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.2);
+            border-radius: 18px;
+            font-weight: 800;
+            cursor: not-allowed;
+            margin-top: 15px;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            pointer-events: none;
+        }
+        .btn-connect.connected ~ .btn-send {
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            cursor: pointer;
+            pointer-events: auto;
+            text-shadow: 0 0 8px var(--accent);
+            animation: pulseGlow 1.2s infinite alternate;
+        }
+        .btn-connect.connected ~ .btn-send:hover { 
+            background: var(--accent); 
+            color: white; 
+            box-shadow: 0 10px 30px rgba(0, 210, 255, 0.6); 
+            text-shadow: none; 
+            animation: none; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 style="margin-bottom: 30px; font-weight: 900; letter-spacing: -1.5px; font-size: 2rem;">BLE TUNER</h2>
+        <button id="connectBtn" class="btn-connect" onclick="onConnectClick()">SCAN & CONNECT</button>
+        
+        <div class="slider-box">
+            <div class="label-row"><span class="label">Kp Factor</span> <span class="val" id="kp-v">0.20</span></div>
+            <input type="range" id="kp" min="0" max="2" step="0.01" value="0.2">
+        </div>
+        <div class="slider-box">
+            <div class="label-row"><span class="label">Ki Factor</span> <span class="val" id="ki-v">0.00</span></div>
+            <input type="range" id="ki" min="0" max="0.1" step="0.001" value="0">
+        </div>
+        <div class="slider-box">
+            <div class="label-row"><span class="label">Kd Factor</span> <span class="val" id="kd-v">4.00</span></div>
+            <input type="range" id="kd" min="0" max="20" step="0.1" value="4.0">
+        </div>
+        <div class="slider-box">
+            <div class="label-row"><span class="label">Base Speed</span> <span class="val" id="s-v">220</span></div>
+            <input type="range" id="s" min="0" max="255" step="1" value="220">
+        </div>
+
+        <button class="btn-send" onclick="sendParams()">SYNC OVER BLE</button>
+    </div>
+
+    <div id="terminal">System Ready. Use Chrome/Bluefy to connect to Robot-PID-BLE.</div>
+
+    <script>
+        let device = null;
+        let char = null;
+
+        const serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const charUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+        const log = (msg) => {
+            const t = document.getElementById('terminal');
+            t.innerHTML += `<br>> ${msg}`;
+            t.scrollTop = t.scrollHeight;
+        }
+
+        ['kp', 'ki', 'kd', 's'].forEach(id => {
+            const input = document.getElementById(id);
+            input.oninput = () => {
+                document.getElementById(`${id}-v`).innerText = Number(input.value).toFixed(id === 's' ? 0 : 2);
+            };
+        });
+
+        async function onConnectClick() {
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
+                return;
+            }
+            try {
+                if (!navigator.bluetooth) {
+                    alert("Trình duyệt của bạn không hỗ trợ Web Bluetooth. Vui lòng sử dụng Google Chrome trên máy tính hoặc Android.");
+                    return;
+                }
+                
+                log("Opening Bluetooth Scan...");
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'Robot-PID-BLE' }],
+                    optionalServices: [serviceUuid]
+                });
+
+                log(`Connecting to ${device.name}...`);
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(serviceUuid);
+                char = await service.getCharacteristic(charUuid);
+
+                document.getElementById('connectBtn').innerText = "DISCONNECT";
+                document.getElementById('connectBtn').classList.add("connected");
+                log("BLE LINK ESTABLISHED!");
+                
+                device.addEventListener('gattserverdisconnected', () => {
+                    document.getElementById('connectBtn').innerText = "SCAN & CONNECT";
+                    document.getElementById('connectBtn').classList.remove("connected");
+                    log("LINK BROKEN.");
+                });
+
+            } catch (e) {
+                log(`FAILED: ${e}`);
+            }
+        }
+
+        async function sendParams() {
+            if (!char) { log("Error: Not connected!"); return; }
+            const kp = document.getElementById('kp').value;
+            const ki = document.getElementById('ki').value;
+            const kd = document.getElementById('kd').value;
+            const s = document.getElementById('s').value;
+            
+            const cmd = `P${kp},I${ki},D${kd},S${s}`;
+            log(`Syncing: ${cmd}`);
+            
+            try {
+                const encoder = new TextEncoder();
+                await char.writeValue(encoder.encode(cmd));
+                log("Data Synced Successfully (EEPROM Updated).");
+            } catch (e) {
+                log(`Sync ERROR: ${e}`);
+            }
+        }
+    </script>
+</body>
+</html>

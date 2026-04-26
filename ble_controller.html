@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K-Lab | BLE Zero-Access Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: #0a0a0a;
+            color: #d4d4d4;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .btn-industrial {
+            background-color: #1f1f1f;
+            border: 1px solid #333;
+            color: #d4d4d4;
+            transition: all 0.1s ease;
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 1px;
+            cursor: pointer;
+        }
+
+        .btn-industrial:hover {
+            background-color: #333;
+            border-color: #555;
+            box-shadow: 0 0 10px rgba(85, 85, 85, 0.5);
+        }
+
+        .btn-industrial:active {
+            background-color: #000;
+            transform: scale(0.95);
+            border-color: #10b981;
+        }
+
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-disconnected { background-color: #ef4444; box-shadow: 0 0 8px #ef4444; }
+        .status-connected { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
+        
+        .log-box {
+            background-color: #111;
+            border: 1px solid #222;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 0.80rem;
+        }
+        
+        /* Ẩn scrollbar cho log box nhìn công nghiệp hơn */
+        .log-box::-webkit-scrollbar { width: 4px; }
+        .log-box::-webkit-scrollbar-track { background: #111; }
+        .log-box::-webkit-scrollbar-thumb { background: #333; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Header -->
+    <div class="w-full max-w-md border-b border-neutral-800 pb-4 mb-6 text-center">
+        <h1 class="text-2xl font-bold tracking-widest text-neutral-100">K-LAB // CONTROLLER</h1>
+        <p class="text-xs text-neutral-500 uppercase mt-1">BLE Zero-Access Interface</p>
+    </div>
+
+    <!-- Status & Connect -->
+    <div class="w-full max-w-md flex justify-between items-center bg-neutral-900 border border-neutral-800 p-4 rounded mb-6 shadow-lg">
+        <div class="flex items-center">
+            <span id="statusIndicator" class="status-dot status-disconnected"></span>
+            <span id="statusText" class="text-sm font-bold uppercase tracking-wider">Disconnected</span>
+        </div>
+        <button id="connectBtn" class="btn-industrial px-4 py-2 text-sm rounded tracking-wider">CONNECT BLE</button>
+    </div>
+
+    <!-- Controls -->
+    <div class="w-full max-w-md grid grid-cols-5 gap-4 mb-6">
+        
+        <!-- Directional Pad (Cột 1,2,3) -->
+        <div class="col-span-3 flex flex-col items-center justify-center space-y-2 bg-neutral-900 border border-neutral-800 p-4 rounded shadow-lg">
+            <h2 class="text-xs text-neutral-500 w-full text-left mb-2 tracking-wider">MOTION CORE</h2>
+            <button class="btn-industrial w-16 h-16 rounded shadow-md text-xl" 
+                onmousedown="sendCommand('F')" onmouseup="sendCommand('S')" onmouseleave="sendCommand('S')"
+                ontouchstart="handleTouch(event, 'F')" ontouchend="handleTouch(event, 'S')">▲</button>
+            <div class="flex space-x-2">
+                <button class="btn-industrial w-16 h-16 rounded shadow-md text-xl" 
+                    onmousedown="sendCommand('L')" onmouseup="sendCommand('S')" onmouseleave="sendCommand('S')"
+                    ontouchstart="handleTouch(event, 'L')" ontouchend="handleTouch(event, 'S')">◀</button>
+                <button class="btn-industrial w-16 h-16 rounded shadow-md text-xl" 
+                    onmousedown="sendCommand('B')" onmouseup="sendCommand('S')" onmouseleave="sendCommand('S')"
+                    ontouchstart="handleTouch(event, 'B')" ontouchend="handleTouch(event, 'S')">▼</button>
+                <button class="btn-industrial w-16 h-16 rounded shadow-md text-xl" 
+                    onmousedown="sendCommand('R')" onmouseup="sendCommand('S')" onmouseleave="sendCommand('S')"
+                    ontouchstart="handleTouch(event, 'R')" ontouchend="handleTouch(event, 'S')">▶</button>
+            </div>
+        </div>
+
+        <!-- Action Pad (Cột 4,5) -->
+        <div class="col-span-2 flex flex-col items-center justify-center space-y-4 bg-neutral-900 border border-neutral-800 p-4 rounded shadow-lg">
+            <h2 class="text-xs text-neutral-500 w-full text-left mb-2 tracking-wider">ARM SYS</h2>
+            <button class="btn-industrial w-full h-16 rounded shadow-md text-sm font-bold" onclick="sendCommand('G')">[ GẮP ]</button>
+            <button class="btn-industrial w-full h-16 rounded shadow-md text-sm font-bold" onclick="sendCommand('D')">[ THẢ ]</button>
+        </div>
+
+    </div>
+
+    <!-- Logs -->
+    <div class="w-full max-w-md">
+        <h2 class="text-xs text-neutral-500 mb-2 tracking-wider">SECURE TERMINAL LOGS</h2>
+        <div id="logConsole" class="log-box p-3 rounded font-mono text-neutral-400 flex flex-col space-y-1 shadow-inner">
+            <span>> SYS_INIT: Web Bluetooth API Ready.</span>
+            <span>> Awaiting connection payload...</span>
+        </div>
+    </div>
+
+    <script>
+        // Cấu hình UUIDs (Sử dụng chuẩn Nordic UART làm mặc định)
+        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"; 
+        const CHARACTERISTIC_TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // Ghi dữ liệu từ Web -> ESP32
+
+        let bleDevice = null;
+        let bleServer = null;
+        let bleService = null;
+        let txCharacteristic = null;
+
+        const connectBtn = document.getElementById('connectBtn');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const logConsole = document.getElementById('logConsole');
+
+        function log(message) {
+            const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+            const span = document.createElement('span');
+            span.textContent = `[${time}] > ${message}`;
+            logConsole.appendChild(span);
+            logConsole.scrollTop = logConsole.scrollHeight;
+        }
+
+        async function connectBLE() {
+            try {
+                log("Scanning for K-LAB architectures...");
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    // Chỉ lọc các thiết bị phát ra SERVICE_UUID này
+                    filters: [{ services: [SERVICE_UUID] }],
+                    
+                    // Ghi chú: Nếu ESP32 chưa được cấu hình phát Service UUID ra ngoài advertising, 
+                    // hãy mở comment đoạn dưới đây và đóng filters lại:
+                    // acceptAllDevices: true,
+                    // optionalServices: [SERVICE_UUID]
+                });
+
+                log(`Target acquired: ${bleDevice.name}`);
+                
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+                log("Establishing secure GATT connection...");
+                bleServer = await bleDevice.gatt.connect();
+
+                log("Resolving primary service...");
+                bleService = await bleServer.getPrimaryService(SERVICE_UUID);
+
+                log("Mapping TX characteristics...");
+                txCharacteristic = await bleService.getCharacteristic(CHARACTERISTIC_TX_UUID);
+
+                log("SYS_ONLINE: Zero-Access Granted.");
+                updateStatus(true);
+                connectBtn.textContent = "DISCONNECT";
+
+            } catch (error) {
+                log(`Auth Error: ${error}`);
+                updateStatus(false);
+            }
+        }
+
+        function onDisconnected() {
+            log("SYS_OFFLINE: Connection terminated.");
+            updateStatus(false);
+            connectBtn.textContent = "CONNECT BLE";
+            bleDevice = null;
+            bleServer = null;
+            bleService = null;
+            txCharacteristic = null;
+        }
+
+        function updateStatus(isConnected) {
+            if (isConnected) {
+                statusIndicator.classList.remove('status-disconnected');
+                statusIndicator.classList.add('status-connected');
+                statusText.textContent = "CONNECTED";
+                statusText.classList.replace('text-neutral-500', 'text-emerald-500');
+            } else {
+                statusIndicator.classList.remove('status-connected');
+                statusIndicator.classList.add('status-disconnected');
+                statusText.textContent = "DISCONNECTED";
+                statusText.classList.replace('text-emerald-500', 'text-neutral-500');
+            }
+        }
+
+        connectBtn.addEventListener('click', () => {
+            if (!bleDevice || !bleDevice.gatt.connected) {
+                connectBLE();
+            } else {
+                bleDevice.gatt.disconnect();
+            }
+        });
+
+        // Hàm xử lý gửi chuỗi lệnh
+        async function sendCommand(cmd) {
+            if (!txCharacteristic) {
+                // Không log liên tục khi chưa kết nối để tránh trôi log
+                return; 
+            }
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(cmd);
+                await txCharacteristic.writeValue(data);
+                log(`Payload Sent: [${cmd}]`);
+            } catch (error) {
+                log(`Transmit Error: ${error}`);
+            }
+        }
+
+        // Hỗ trợ cảm ứng trên thiết bị di động (Ngăn zoom/scroll khi đè nút)
+        function handleTouch(event, cmd) {
+            event.preventDefault(); // Ngăn chặn sự kiện chuột giả lập sau đó
+            sendCommand(cmd);
+        }
+
+        // Chặn menu chuột phải để tránh lỗi vướng menu
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('contextmenu', e => e.preventDefault());
+        });
+    </script>
+</body>
+</html>

@@ -2,6 +2,7 @@
 #include "Sensor.h" 
 #include "Motion.h"
 #include "DisplayOLED.h"
+#include "Mission1.h"
 
 // Biến canh thời gian cho bộ PID
 unsigned long lastTime = 0;
@@ -13,6 +14,7 @@ void setup() {
   sensor_init(); 
   motion_init();
   initOLED();
+  mission1_init();
   
   // Mặc định khởi động vào Mode 2 (chờ)
   mode = 2;
@@ -24,14 +26,23 @@ void setup() {
   display.println("He thong san sang!");
   display.setCursor(0, 25);
   display.println("Mode 2: Dung Hoc");
+  display.setCursor(0, 40);
+  display.println("WiFi: EC-MISSION1");
   display.display();
 }
 
 void loop() {
+  mission1_loop();
+
   // 1. Quản lý việc ấn nút chuyển Mode (1 -> 2 -> 3 -> 1...)
   if (isBtn1Clicked()) {
+    if (mode == 4) {
+      mission1_deactivate();
+      mode = 4;
+    }
+
     mode++;
-    if (mode > 3) mode = 1;
+    if (mode > 4) mode = 1;
 
     if (mode == 1) {
       beep(100); 
@@ -77,6 +88,18 @@ void loop() {
       // Reset thời gian cho PID
       lastTime = millis();
       calPID = 1;
+    }
+    else if (mode == 4) {
+      beep(100); delay(80); beep(100); delay(80); beep(100);
+      Serial.println("MODE 4: Mission 1 BLE Manual");
+      mission1_activate();
+
+      display.clearDisplay();
+      display.setCursor(0, 10);
+      display.println("Mode 4:");
+      display.println("BLE Control");
+      display.println("ROBOT_2026");
+      display.display();
     }
   }
 
@@ -153,5 +176,8 @@ void loop() {
       display.display();
       lastUpdate = millis();
     }
+  }
+  else if (mode == 4) {
+    // Mission 1 is handled by mission1_loop() so PID core stays untouched.
   }
 }

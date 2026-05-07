@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <!-- Cấu hình viewport nghiêm ngặt cho Mobile: Không cho phép zoom, không kéo thả -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>K-Lab | Mobile BLE Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background-color: #0a0a0a;
+            color: #d4d4d4;
+            /* Khóa bôi đen và thao tác cuộn trên mobile */
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; 
+            overflow: hidden; /* Ngăn cuộn trang */
+        }
+
+        .btn-industrial {
+            background-color: #1f1f1f;
+            border: 1px solid #333;
+            color: #d4d4d4;
+            transition: all 0.1s ease;
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 1px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-industrial:active, .btn-active {
+            background-color: #000;
+            transform: scale(0.92);
+            border-color: #10b981;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.4) inset;
+        }
+
+        .status-dot {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-disconnected { background-color: #ef4444; box-shadow: 0 0 10px #ef4444; }
+        .status-connected { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
+        
+        .log-box {
+            background-color: #111;
+            border: 1px solid #222;
+            height: 80px; /* Nhỏ lại để nhường không gian cho control */
+            overflow-y: auto;
+            font-size: 0.75rem;
+        }
+        
+        .log-box::-webkit-scrollbar { width: 4px; }
+        .log-box::-webkit-scrollbar-track { background: #111; }
+        .log-box::-webkit-scrollbar-thumb { background: #333; }
+        
+        /* Cấu hình kích thước nút tối ưu cho ngón tay cái */
+        .dpad-btn { width: 70px; height: 70px; font-size: 1.5rem; border-radius: 12px; }
+        .action-btn { width: 80px; height: 80px; font-size: 1rem; border-radius: 50%; border-width: 2px; }
+
+        /* Tối ưu khi xoay ngang (Landscape) cho điều khiển bằng 2 tay */
+        @media (orientation: landscape) {
+            .controls-wrapper {
+                flex-direction: row !important;
+                justify-content: space-between !important;
+                align-items: flex-end !important;
+                padding: 0 20px;
+                height: 100%;
+            }
+            .dpad-btn { width: 80px; height: 80px; font-size: 2rem; }
+            .action-btn { width: 90px; height: 90px; }
+            .header-info { display: none; } /* Ẩn header để có màn hình rộng */
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col p-2 m-0 box-border">
+
+    <!-- Header & Status (Sẽ ẩn khi xoay ngang) -->
+    <div class="header-info w-full flex flex-col items-center mb-2">
+        <h1 class="text-xl font-bold tracking-widest text-neutral-100">K-LAB // MOBILE</h1>
+        
+        <div class="w-full max-w-sm flex justify-between items-center bg-neutral-900 border border-neutral-800 p-3 rounded-lg shadow-lg mt-2">
+            <div class="flex items-center">
+                <span id="statusIndicator" class="status-dot status-disconnected"></span>
+                <span id="statusText" class="text-xs font-bold uppercase tracking-wider">Offline</span>
+            </div>
+            <button id="connectBtn" class="btn-industrial px-4 py-2 text-xs rounded tracking-wider border-neutral-600">CONNECT</button>
+        </div>
+    </div>
+
+    <!-- Logs Container (Nằm giữa màn hình trên Mobile dọc) -->
+    <div class="w-full max-w-sm mx-auto mb-4 header-info">
+        <div id="logConsole" class="log-box p-2 rounded font-mono text-neutral-500 flex flex-col space-y-1 shadow-inner">
+            <span>> SYS_INIT: Mobile UI Ready.</span>
+        </div>
+    </div>
+
+    <!-- Vùng Điều Khiển (Gamepad Layout) -->
+    <div class="controls-wrapper flex flex-col flex-1 items-center justify-center gap-8 w-full max-w-2xl mx-auto">
+        
+        <!-- Cụm D-PAD (Tay trái) -->
+        <div class="flex flex-col items-center justify-center space-y-2">
+            <button class="btn-industrial dpad-btn" id="btn-F" 
+                ontouchstart="handleTouch(event, 'F', this)" ontouchend="handleTouchEnd(event, 'S', this)"
+                onmousedown="handleTouch(event, 'F', this)" onmouseup="handleTouchEnd(event, 'S', this)" onmouseleave="handleTouchEnd(event, 'S', this)">▲</button>
+            <div class="flex space-x-2">
+                <button class="btn-industrial dpad-btn" id="btn-L" 
+                    ontouchstart="handleTouch(event, 'L', this)" ontouchend="handleTouchEnd(event, 'S', this)"
+                    onmousedown="handleTouch(event, 'L', this)" onmouseup="handleTouchEnd(event, 'S', this)" onmouseleave="handleTouchEnd(event, 'S', this)">◀</button>
+                <button class="btn-industrial dpad-btn" id="btn-B" 
+                    ontouchstart="handleTouch(event, 'B', this)" ontouchend="handleTouchEnd(event, 'S', this)"
+                    onmousedown="handleTouch(event, 'B', this)" onmouseup="handleTouchEnd(event, 'S', this)" onmouseleave="handleTouchEnd(event, 'S', this)">▼</button>
+                <button class="btn-industrial dpad-btn" id="btn-R" 
+                    ontouchstart="handleTouch(event, 'R', this)" ontouchend="handleTouchEnd(event, 'S', this)"
+                    onmousedown="handleTouch(event, 'R', this)" onmouseup="handleTouchEnd(event, 'S', this)" onmouseleave="handleTouchEnd(event, 'S', this)">▶</button>
+            </div>
+        </div>
+
+        <!-- Cụm ACTION (Tay phải) -->
+        <div class="flex items-center justify-center space-x-6">
+            <button class="btn-industrial action-btn border-neutral-600 hover:border-emerald-500" 
+                ontouchstart="handleTouch(event, 'G', this)" ontouchend="handleTouchEnd(event, null, this)"
+                onmousedown="handleTouch(event, 'G', this)" onmouseup="handleTouchEnd(event, null, this)">GẮP</button>
+            <button class="btn-industrial action-btn border-neutral-600 hover:border-emerald-500" 
+                ontouchstart="handleTouch(event, 'D', this)" ontouchend="handleTouchEnd(event, null, this)"
+                onmousedown="handleTouch(event, 'D', this)" onmouseup="handleTouchEnd(event, null, this)">THẢ</button>
+        </div>
+
+    </div>
+
+    <!-- Nút kết nối nhỏ khi xoay ngang màn hình -->
+    <div class="fixed top-2 right-2 hidden landscape:block">
+         <button id="connectBtnLandscape" class="btn-industrial px-3 py-1 text-xs rounded opacity-50 hover:opacity-100">BLE</button>
+    </div>
+
+    <script>
+        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"; 
+        const CHARACTERISTIC_TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+
+        let bleDevice = null;
+        let bleServer = null;
+        let bleService = null;
+        let txCharacteristic = null;
+
+        const connectBtn = document.getElementById('connectBtn');
+        const connectBtnLandscape = document.getElementById('connectBtnLandscape');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const logConsole = document.getElementById('logConsole');
+
+        function log(message) {
+            const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+            const span = document.createElement('span');
+            span.textContent = `[${time}] > ${message}`;
+            logConsole.appendChild(span);
+            logConsole.scrollTop = logConsole.scrollHeight;
+        }
+
+        async function connectBLE() {
+            try {
+                log("Scanning...");
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }]
+                });
+                
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+                bleServer = await bleDevice.gatt.connect();
+                bleService = await bleServer.getPrimaryService(SERVICE_UUID);
+                txCharacteristic = await bleService.getCharacteristic(CHARACTERISTIC_TX_UUID);
+
+                updateStatus(true);
+            } catch (error) {
+                log(`Error: ${error}`);
+                updateStatus(false);
+            }
+        }
+
+        function onDisconnected() {
+            log("SYS_OFFLINE");
+            updateStatus(false);
+            bleDevice = null;
+            bleServer = null;
+            bleService = null;
+            txCharacteristic = null;
+        }
+
+        function updateStatus(isConnected) {
+            if (isConnected) {
+                statusIndicator.classList.replace('status-disconnected', 'status-connected');
+                statusText.textContent = "CONNECTED";
+                statusText.classList.replace('text-neutral-500', 'text-emerald-500');
+                connectBtn.textContent = "DISCONNECT";
+                connectBtnLandscape.classList.add('border-emerald-500', 'text-emerald-500');
+            } else {
+                statusIndicator.classList.replace('status-connected', 'status-disconnected');
+                statusText.textContent = "OFFLINE";
+                statusText.classList.replace('text-emerald-500', 'text-neutral-500');
+                connectBtn.textContent = "CONNECT";
+                connectBtnLandscape.classList.remove('border-emerald-500', 'text-emerald-500');
+            }
+        }
+
+        function toggleConnection() {
+            if (!bleDevice || !bleDevice.gatt.connected) {
+                connectBLE();
+            } else {
+                bleDevice.gatt.disconnect();
+            }
+        }
+
+        connectBtn.addEventListener('click', toggleConnection);
+        connectBtnLandscape.addEventListener('click', toggleConnection);
+
+        let activeCommand = null;
+
+        async function sendCommand(cmd) {
+            if (!txCharacteristic) return; 
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(cmd);
+                await txCharacteristic.writeValue(data);
+                if(cmd !== 'S') log(`Tx: [${cmd}]`); // Không log nút Stop để tránh rác màn hình
+            } catch (error) {
+                console.error("Tx Error", error);
+            }
+        }
+
+        // Tối ưu hóa sự kiện chạm trên Mobile để chống giật/đơ
+        function handleTouch(event, cmd, el) {
+            event.preventDefault(); 
+            el.classList.add('btn-active');
+            if(activeCommand !== cmd) {
+                activeCommand = cmd;
+                sendCommand(cmd);
+            }
+        }
+
+        function handleTouchEnd(event, cmd, el) {
+            event.preventDefault();
+            el.classList.remove('btn-active');
+            if (cmd) {
+                activeCommand = null;
+                sendCommand(cmd); // Gửi lệnh Stop
+            }
+        }
+
+        // Chặn zoom, cuộn, và popup menu trên toàn bộ document
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('gesturestart', e => e.preventDefault());
+    </script>
+</body>
+</html>

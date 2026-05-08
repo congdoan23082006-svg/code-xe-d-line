@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "Sensor.h" 
 #include "Motion.h"
+#include "Gripper.h"
 #include "DisplayOLED.h"
 #include "Mission1.h"
 

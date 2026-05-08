@@ -13,6 +13,7 @@ void setup() {
   // Khởi tạo các module hệ thống
   sensor_init(); 
   motion_init();
+  gripper_init(); // ✅ Khởi tạo MCPWM cho Servo (PHẢI gọi trước mission1_init)
   initOLED();
   mission1_init();
   

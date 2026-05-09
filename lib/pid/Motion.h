@@ -34,7 +34,7 @@ extern volatile float Kd;
 extern volatile int isLeft;
 extern volatile int isRight;
 extern volatile long posPID;
-extern int dashedLineCount; // Đếm số vạch đứt
+extern int crossLineCount; // Đếm số ngã ba/ngã tư
 
 void motion_init();
 void speed_run(int speedDC_left, int speedDC_right);

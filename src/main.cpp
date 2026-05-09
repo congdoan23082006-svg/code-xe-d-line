@@ -7,6 +7,37 @@
 // Biến canh thời gian cho bộ PID
 unsigned long lastTime = 0;
 
+void startPIDMode() {
+  mode = 4;
+  mission1_deactivate(); // Tắt kết nối BLE để tập trung tài nguyên chạy xe
+
+  beep(100);
+  delay(100);
+  beep(100);
+  Serial.println("MODE 4: Bat dau chay PID (Tu Web UI)!");
+  display.clearDisplay();
+  display.setCursor(0, 10);
+  display.println("Mode 4:");
+  display.println("Running PID...");
+  display.display();
+
+  lastTime = millis();
+  motion_reset();
+  calPID = 1;
+}
+void startBinMode() {
+  mode = 3;
+  mission1_deactivate();
+
+  beep(500);
+  Serial.println("MODE 3: Kiem tra BIN (Tu Web UI)!");
+  display.clearDisplay();
+  display.setCursor(0, 10);
+  display.println("Mode 3:");
+  display.println("Kiem tra BIN");
+  display.display();
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -39,6 +70,9 @@ void loop() {
   if (isBtn1Clicked()) {
     if (mode == 1) {
       mission1_deactivate(); // Thoát khỏi Mode 1 (BLE) thì phải tắt BLE
+
+
+      
     }
 
     mode++;
@@ -46,6 +80,7 @@ void loop() {
       mode = 1;
 
     if (mode == 1) {
+      speed_run(0, 0);
       beep(100);
       delay(80);
       beep(100);
@@ -182,13 +217,13 @@ void loop() {
       display.setCursor(0, 0);
       display.println("MODE 4: CHAY PID");
 
-      // Hiển thị số lần gặp vạch đứt
+      // Hiển thị số lần gặp ngã ba
       display.setCursor(0, 15);
-      display.print("So vach dut:");
+      display.print("So nga ba:");
 
       display.setTextSize(3); // Làm số lần thật to ở giữa màn hình
       display.setCursor(45, 35);
-      display.printf("%d", dashedLineCount);
+      display.printf("%d", crossLineCount);
 
       display.display();
       lastUpdate = millis();

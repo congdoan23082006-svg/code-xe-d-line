@@ -36,6 +36,7 @@ void updateCrossLineOLED() {
 
 void motion_reset() {
   dashedLineCount = 0;
+
   vitri = 0;
   lastPos = 0;
   posPID = 0;
@@ -240,24 +241,15 @@ void runforwardline(int tocdo) {
 
     // 2. Cập nhật giá trị ngay lên màn hình OLED
     updateCrossLineOLED();
-
-    // 3. Nếu gặp đủ 3 lần (vạch đích), dừng xe vĩnh viễn
-    if (crossLineCount >= 3) {
-      speed_run(0, 0); // Phanh chết
-      while (true) {
-        beep(500);
-        delay(500);
-      }
-    }
-
-    // 4. Ép xe đi thẳng để vượt qua vạch ngang/vòng tròn
-    // Cấp tốc độ đều cho 2 bánh (không qua PID)
+    speed_run(0, 0);
+    delay(500);
+    // 3. Hardcode tăng tốc để xe có lực kéo qua vạch đen ngang/vòng tròn
     speed_run(tocdo, tocdo);
 
-    // Giữ nguyên tốc độ này trong 150 mili-giây.
-    // Bạn cần tinh chỉnh số 150 này sao cho xe vừa đủ thoát khỏi cụm vạch đen
-    // Nếu vạch quá to hoặc xe chạy chậm, hãy tăng lên 200, 250...
-    delay(150);
+    // Giữ nguyên tốc độ này trong 500 mili-giây.
+    // Bạn cần tinh chỉnh số 500 này sao cho xe vừa đủ thoát khỏi cụm vạch đen
+    // Nếu vạch quá to hoặc xe chạy chậm, hãy tăng lên 600, 700...
+    delay(1000);
 
     // 5. Reset vị trí để sau khi thoát delay, thuật toán PID không bị giật mình
     vitri = 0;
@@ -387,9 +379,9 @@ void runforwardline(int tocdo) {
         } else {
           // Rẽ theo vitri để sweep tìm lại line
           if (vitri > 0) {
-            speed_run(-100, 100); // Line cuối ở phải → rẽ phải
+            speed_run(150, -100); // Line cuối ở phải → rẽ phải
           } else if (vitri < 0) {
-            speed_run(100, -100); // Line cuối ở trái → rẽ trái
+            speed_run(-100, 150); // Line cuối ở trái → rẽ trái
           } else {
             speed_run(-150, -150); // Không rõ → tiếp tục lùi
           }

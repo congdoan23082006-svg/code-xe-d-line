@@ -41,7 +41,9 @@ class MyCallbacks: public BLECharacteristicCallbacks {
         if (!isMission1Active) return; // Chỉ điều khiển khi đang ở Mode 4
 
         int speed = 200; // Tốc độ điều khiển bằng tay (chỉnh từ 0-4095)
-               switch(cmd) {
+        extern void startPIDMode();
+        extern void startBinMode();
+        switch(cmd) {
             case 'F': speed_run(speed, speed); break;
             case 'B': speed_run(-speed, -speed); break;
             case 'L': speed_run(-speed, speed); break;
@@ -54,6 +56,14 @@ class MyCallbacks: public BLECharacteristicCallbacks {
             case 'D': 
                 Serial.println("Action: THA"); 
                 gripper_release(); // Gọi hàm thả
+                break;
+            case 'P': 
+                Serial.println("Action: Chuyen sang PID"); 
+                startPIDMode();
+                break;
+            case 'C': 
+                Serial.println("Action: Chuyen sang Mode 3 (BIN)"); 
+                startBinMode();
                 break;
             default: speed_run(0, 0); break;
         }

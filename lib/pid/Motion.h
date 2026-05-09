@@ -23,7 +23,7 @@
 // ==========================================
 // CÁC BIẾN TOÀN CỤC VÀ HÀM
 // ==========================================
-extern int servoPwm;
+extern int turnAngle;
 extern int vitri;
 extern int baseSpeed;
 extern volatile int calPID;
@@ -34,15 +34,13 @@ extern volatile float Kd;
 extern volatile int isLeft;
 extern volatile int isRight;
 extern volatile long posPID;
-extern int count180; // Biến đếm số lần gặp vạch 180 độ (8 mắt đen)
-extern int current_stage; // Biến trạng thái chặng đường
-extern bool is_final_stage; // Cờ báo hiệu chặng cuối (chuẩn bị về đích)
 extern int dashedLineCount; // Đếm số vạch đứt
 
 void motion_init();
 void speed_run(int speedDC_left, int speedDC_right);
 void handleAndSpeed(int angle, int speed1);
-void PID();
+void PID(uint8_t current_sensor);
 void runforwardline(int tocdo);
+void motion_reset();
 
 #endif

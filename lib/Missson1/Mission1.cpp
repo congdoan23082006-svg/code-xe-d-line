@@ -5,7 +5,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include "Motion.h"
-#include "Gripper.h"
+#include "gripper.h"
 
 
 BLEServer* pServer = NULL;

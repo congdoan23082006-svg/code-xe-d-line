@@ -1,44 +1,49 @@
-#include "Gripper.h"
-#include "driver/mcpwm.h"
+#include "gripper.h"
+#include <Arduino.h> // Chỉ cần Arduino.h, không cần ESP32Servo.h nữa
 
 const int servoPin = 26; 
 
-void gripper_init() {
-  // SỬ DỤNG MCPWM (Bộ băm xung chuyên dụng cho Động Cơ/Servo) thay vì LEDC.
-  // Bộ này phần cứng hoàn toàn độc lập, đảm bảo không có bất kỳ xung đột nào với hệ thống.
-  mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, servoPin);
-  
-  mcpwm_config_t pwm_config;
-  pwm_config.frequency = 50;  // Tần số 50Hz cho Servo
-  pwm_config.cmpr_a = 0;      
-  pwm_config.cmpr_b = 0;      
-  pwm_config.counter_mode = MCPWM_UP_COUNTER;
-  pwm_config.duty_mode = MCPWM_DUTY_MODE_0;
-  
-  // Khởi tạo MCPWM (Dùng Timer riêng của MCPWM)
-  mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config);
-  
-  gripper_write(0);
-}
+// --- ĐỊNH NGHĨA CÁC THÔNG SỐ PWM ---
+// LƯU Ý QUAN TRỌNG: Chọn một kênh LEDC từ 0 đến 15. 
+// Bạn cần chắc chắn kênh này KHÔNG TRÙNG với các kênh mà Motion.cpp (động cơ DC) đang sử dụng.
+const int servoChannel = 4;   // Ví dụ chọn kênh 4
+const int pwmFreq = 50;       // Tần số chuẩn cho Servo là 50Hz (chu kỳ 20ms = 20000us)
+const int pwmResolution = 16; // Độ phân giải 16-bit (giá trị Duty Cycle từ 0 đến 65535)
 
 void gripper_write(int angle) {
-  if (angle >= 0 && angle <= 90) {
-    // 0 độ = 500us, 180 độ = 2400us
-    float pulse_us = map(angle, 0, 180, 500, 2400);
-    // Tính % Duty Cycle (1 chu kỳ 50Hz = 20000us)
-    float duty_percent = (pulse_us / 20000.0) * 100.0;
-    
-    // Xuất xung PWM
-    mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, duty_percent);
-  }
+  // 1. Giới hạn góc an toàn từ 0 đến 90 độ (theo như code cũ của bạn để tránh quá góc)
+  angle = constrain(angle, 0, 90);
+  
+  // 2. Chuyển đổi góc (0 - 180) sang dải xung chuẩn (500us - 2400us)
+  // Lưu ý: Dù giới hạn góc dùng ở 90 độ, hàm map vẫn cần ánh xạ theo dải 0-180 để ra số microgiây chuẩn xác.
+  int pulse_us = map(angle, 0, 180, 500, 2400);
+  
+  // 3. Tính toán giá trị Duty Cycle
+  // Với tần số 50Hz, 1 chu kỳ = 20000us. Độ phân giải 16-bit có giá trị max là 65535.
+  // Công thức quy đổi: duty = (pulse_us / 20000) * 65535
+  int dutyCycle = map(pulse_us, 0, 20000, 0, 65535);
+  
+  // 4. Xuất tín hiệu PWM ra kênh
+  ledcWrite(servoChannel, dutyCycle);
+}
+
+void gripper_init() {
+  // 1. Khởi tạo kênh PWM phần cứng với tần số 50Hz và độ phân giải 16-bit
+  ledcSetup(servoChannel, pwmFreq, pwmResolution);
+  
+  // 2. Kết nối chân servoPin với kênh PWM vừa tạo
+  ledcAttachPin(servoPin, servoChannel);
+  
+  // 3. Di chuyển Servo về góc 0 độ mặc định
+  gripper_write(0);
 }
 
 void gripper_grab() {
   gripper_write(90);
-  Serial.println("=> Da giu Servo o goc: 90 do (Dung MCPWM)");
+  Serial.println("=> Da giu Servo o goc: 90 do (Dung LEDC PWM)");
 }
 
 void gripper_release() {
   gripper_write(0);
-  Serial.println("=> Da giu Servo o goc: 0 do (Dung MCPWM)");
+  Serial.println("=> Da giu Servo o goc: 0 do (Dung LEDC PWM)");
 }

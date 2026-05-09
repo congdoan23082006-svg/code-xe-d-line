@@ -70,13 +70,13 @@ void read_sensor_74hc4067() {
     sensorValue[j] = 4095 - analogRead(SIG_PIN);
 
     temp = temp << 1; 
-    // Quy ước cuối cùng: QUANG ĐỘ CAO (TRẮNG) = 1, QUANG ĐỘ THẤP (ĐEN) = 0
+    // Quy ước cuối cùng: Vạch ĐEN = 1, Nền TRẮNG = 0
     // Vì sensorValue ở đây đã là (4095 - raw), ta so sánh với ngưỡng so sánh.
-    if (sensorValue[j] >= compare_value[j]) {
-      // TRẮNG: set bit
+    if (sensorValue[j] < compare_value[j]) {
+      // ĐEN: set bit (Dành cho line đen)
       temp |= 0x01;
     } else {
-      // ĐEN: clear bit
+      // TRẮNG: clear bit
       temp &= 0xFE;
     }
   }

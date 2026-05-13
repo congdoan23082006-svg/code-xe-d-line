@@ -38,11 +38,25 @@ class MyCallbacks: public BLECharacteristicCallbacks {
         Serial.print("Received Value: ");
         Serial.println(cmd);
 
-        if (!isMission1Active) return; // Chỉ điều khiển khi đang ở Mode 4
-
-        int speed = 200; // Tốc độ điều khiển bằng tay (chỉnh từ 0-4095)
         extern void startPIDMode();
         extern void startBinMode();
+
+        // Lệnh P và C luôn được phép chạy để chuyển Mode từ bất kỳ đâu
+        if (cmd == 'P') {
+            Serial.println("Action: Chuyen sang PID");
+            startPIDMode();
+            return;
+        }
+        if (cmd == 'C') {
+            Serial.println("Action: Chuyen sang Mode 3 (BIN)");
+            startBinMode();
+            return;
+        }
+
+        // Các lệnh điều khiển thủ công chỉ chạy khi đang ở Mode 1 (BLE)
+        if (!isMission1Active) return;
+
+        int speed = 170; // Tốc độ điều khiển bằng tay (chỉnh từ 0-4095)
         switch(cmd) {
             case 'F': speed_run(speed, speed); break;
             case 'B': speed_run(-speed, -speed); break;
@@ -51,19 +65,11 @@ class MyCallbacks: public BLECharacteristicCallbacks {
             case 'S': speed_run(0, 0); break;
             case 'G': 
                 Serial.println("Action: GAP"); 
-                gripper_grab(); // Gọi hàm gắp
+                gripper_grab();
                 break;
             case 'D': 
                 Serial.println("Action: THA"); 
-                gripper_release(); // Gọi hàm thả
-                break;
-            case 'P': 
-                Serial.println("Action: Chuyen sang PID"); 
-                startPIDMode();
-                break;
-            case 'C': 
-                Serial.println("Action: Chuyen sang Mode 3 (BIN)"); 
-                startBinMode();
+                gripper_release();
                 break;
             default: speed_run(0, 0); break;
         }

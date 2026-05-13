@@ -8,8 +8,8 @@
 // ==========================================
 // Động cơ trái (Motor A)
 #define ENA 4       // Chân cấp PWM chỉnh tốc độ Trái
-#define IN1 16      // Chân chỉnh chiều 1 Trái
-#define IN2 17      // Chân chỉnh chiều 2 Trái
+#define IN1 17      // Chân chỉnh chiều 1 Trái (Đã đảo ngược)
+#define IN2 16      // Chân chỉnh chiều 2 Trái (Đã đảo ngược)
 
 // Động cơ phải (Motor B)
 #define IN3 18      // Chân chỉnh chiều 1 Phải
@@ -34,7 +34,6 @@ extern volatile float Kd;
 extern volatile int isLeft;
 extern volatile int isRight;
 extern volatile long posPID;
-extern int crossLineCount; // Đếm số ngã ba/ngã tư
 
 void motion_init();
 void speed_run(int speedDC_left, int speedDC_right);

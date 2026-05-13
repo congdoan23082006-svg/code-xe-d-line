@@ -2,9 +2,7 @@
 #include "Motion.h"
 #include "DisplayOLED.h"
 #include "Sensor.h"
-
-// Biến đếm số lần gặp vạch ngang/vòng tròn
-int crossLineCount = 0;
+#include "encoder.h"
 
 // Chứa mảng sensor và sensorValue
 int servoPwm = 0;
@@ -19,28 +17,39 @@ volatile int isLeft = 0;
 volatile int isRight = 0;
 volatile long posPID = 0;
 int dashedLineCount = 0; // Đếm số vạch đứt
+unsigned long runStartTime = 0;
+bool isRunTimerStarted = false;
 
-void updateCrossLineOLED() {
+void updateInfoOLED(unsigned long timeMs) {
+  if (!isOledOk)
+    return;
+  float currentDist = calculateDistance();
+
   display.clearDisplay();
-  display.setTextSize(2); // In chữ to cho dễ nhìn
+  display.setTextSize(1); // In chữ nhỏ để hiển thị được nhiều dòng
   display.setTextColor(SSD1306_WHITE);
 
   display.setCursor(0, 0);
-  display.print("Vach gap:");
+  display.print("PID Running...");
 
-  display.setCursor(0, 30);
-  display.print(crossLineCount); // Hiển thị số 1, 2, 3...
+  display.setCursor(0, 20);
+  display.print("Dist: ");
+  display.print(currentDist);
+  display.print(" cm");
 
   display.display();
 }
 
 void motion_reset() {
   dashedLineCount = 0;
+  isRunTimerStarted = false;
 
   vitri = 0;
   lastPos = 0;
   posPID = 0;
   calPID = 0;
+
+  resetEncoders(); // Reset lại quãng đường về 0
 }
 void motion_init() {
   // Cài đặt các chân IN làm OUTPUT
@@ -61,8 +70,6 @@ void motion_init() {
 
   ledcSetup(ENB_CH, 1000, 8);
   ledcAttachPin(ENB, ENB_CH);
-
-  initOLED();
 
   speed_run(0, 0);
 }
@@ -182,8 +189,54 @@ void PID(uint8_t current_sensor) {
 }
 
 void runforwardline(int tocdo) {
+  // Bắt đầu đếm thời gian khi hàm chạy lần đầu
+  if (!isRunTimerStarted) {
+    runStartTime = millis();
+    isRunTimerStarted = true;
+  }
+
+  unsigned long elapsedTime = millis() - runStartTime;
+
+  // Cập nhật OLED mỗi 200ms để không làm lag vòng lặp PID
+  static unsigned long lastOLEDTime = 0;
+  if (millis() - lastOLEDTime > 200) {
+    updateInfoOLED(elapsedTime);
+    lastOLEDTime = millis();
+  }
+
+  // Lấy quãng đường hiện tại để quyết định chiến thuật
+  float currentDistance = calculateDistance();
+
+  // =========================================================================
+  // LOGIC QUÃNG ĐƯỜNG
+  // =========================================================================
+
+  float dist_StartSprint = 276;
+  float dist_EndSprint =
+      350.0; // Mốc 2: Đi được 350cm thì kết thúc vút thẳng, quay lại PID
+  float dist_StopAll = 500.0; // Mốc 3: Đi đủ 500cm thì dừng xe vĩnh viễn (Đích)
+
+  if (currentDistance >= dist_StopAll) {
+    // 3. Đến đích -> Phanh chết vĩnh viễn
+    speed_run(0, 0);
+    while (true) {
+      delay(100);
+    }
+  } else if (currentDistance >= dist_StartSprint &&
+             currentDistance < dist_EndSprint) {
+    // 2. Nằm trong đoạn đường nước rút -> Vút thẳng max tốc, bỏ qua PID
+    speed_run(200, 200);
+    return; // Thoát hàm để chặn code PID bên dưới chạy
+  }
+
   // ── White line mode (line trắng nền đen) ──────────────────────────
   static bool whiteLineMode = false;
+  // -- Biến "Thả PID" sau khi qua đoạn Line Trắng --
+  static bool hasPassedWhiteLine = false;      // Đã kích hoạt boost chưa?
+  static unsigned long whiteLineExitTime = 0;  // Thời điểm vừa thoát Line Trắng
+  static bool waitingToBoost = false;          // Đang đếm ngược 2 giây không?
+  static unsigned long boostTimer = 0;         // Hẹn giờ mỗi cú vọt
+  static bool isBoosting = false;              // Đang trong cú vọt không?
   int blackCount = __builtin_popcount(sensor); // Đếm số mắt ĐEN gốc
 
   // 1. Điều kiện VÀO vùng line trắng (Nền đen 5-7 mắt, có mắt trắng ở giữa)
@@ -191,6 +244,8 @@ void runforwardline(int tocdo) {
     uint8_t whiteMask = ~sensor;
     if (whiteMask & 0b00111100) { // Có mắt trắng ở các kênh 2,3,4,5
       whiteLineMode = true;
+      hasPassedWhiteLine = false; // Reset khi vào lại đoạn trắng
+      waitingToBoost = false;
     }
   }
 
@@ -198,6 +253,18 @@ void runforwardline(int tocdo) {
   if (whiteLineMode &&
       (blackCount == 1 || blackCount == 2 || blackCount == 3)) {
     whiteLineMode = false;
+    waitingToBoost = true;        // Bắt đầu đếm ngược 2 giây
+    whiteLineExitTime = millis(); // Ghi nhớ thời điểm vừa thoát
+    isBoosting = false;
+  }
+
+  // 3. Sau 2 giây kể từ lúc thoát Line Trắng -> Kích hoạt boost
+  if (waitingToBoost && !hasPassedWhiteLine) {
+    if (millis() - whiteLineExitTime >= 2000) { // Đợi đúng 2 giây
+      hasPassedWhiteLine = true;                // Kích hoạt boost!
+      waitingToBoost = false;
+      boostTimer = millis(); // Bắt đầu đồng hồ boost
+    }
   }
 
   // 3. Xử lý tín hiệu cho PID và Switch Case
@@ -205,7 +272,35 @@ void runforwardline(int tocdo) {
   if (whiteLineMode) {
     processed_sensor ^= 0xFF; // Đảo bit để các case 0b00011000... chạy đúng
   }
-  // ──────────────────────────────────────────────────────────────────
+
+  // =========================================================================
+  // ƯU TIÊN LỌC NHIỄU NGÃ BA TRƯỚC KHI CHẠY PID
+  // (Ngăn không cho các pattern rác này lọt vào hàm PID để tránh làm hỏng
+  // biến lastPos và lịch sử thuật toán).
+  // =========================================================================
+  if (processed_sensor == 0b11011000 || processed_sensor == 0b10011000 || 
+      processed_sensor == 0b11011100 || processed_sensor == 0b11101000 || 
+      processed_sensor == 0b10111000 || processed_sensor == 0b11001000 || 
+      processed_sensor == 0b10101000 || processed_sensor == 0b11001100 || 
+      processed_sensor == 0b11101100 || processed_sensor == 0b10001000 || 
+      processed_sensor == 0b10001100 || processed_sensor == 0b10011100) {
+    speed_run(-120, 220);
+    delay(150);
+    vitri = -7;
+    return;
+  }
+
+  if (processed_sensor == 0b00011011 || processed_sensor == 0b00011001 || 
+      processed_sensor == 0b00111011 || processed_sensor == 0b00010111 || 
+      processed_sensor == 0b00011101 || processed_sensor == 0b00010011 || 
+      processed_sensor == 0b00010101 || processed_sensor == 0b00110011 || 
+      processed_sensor == 0b00110111 || processed_sensor == 0b00010001 || 
+      processed_sensor == 0b00110001 || processed_sensor == 0b00111001) {
+    speed_run(220, -120);
+    delay(150);
+    vitri = 7;
+    return;
+  }
 
   PID(processed_sensor);
 
@@ -236,41 +331,20 @@ void runforwardline(int tocdo) {
   switch (processed_sensor) {
   case 0b11111111:
   case 0b01111110: // 8 mắt đọc thấy vạch đen ngang hoặc vòng tròn
-    // 1. Tăng biến đếm lên 1
-    crossLineCount++;
-
-    // 2. Cập nhật giá trị ngay lên màn hình OLED
-    updateCrossLineOLED();
-    speed_run(0, 0);
-    delay(500);
-    // 3. Hardcode tăng tốc để xe có lực kéo qua vạch đen ngang/vòng tròn
-    speed_run(tocdo, tocdo);
-
-    // Giữ nguyên tốc độ này trong 500 mili-giây.
-    // Bạn cần tinh chỉnh số 500 này sao cho xe vừa đủ thoát khỏi cụm vạch đen
-    // Nếu vạch quá to hoặc xe chạy chậm, hãy tăng lên 600, 700...
-    delay(1000);
-
-    // 5. Reset vị trí để sau khi thoát delay, thuật toán PID không bị giật mình
+    // Đã bỏ biến đếm vạch. Bây giờ ô đen chỉ là đoạn cần chạy thẳng qua
+    handleAndSpeed(servoPwm, tocdo);
     vitri = 0;
     break;
 
   case 0b00011000:
   case 0b00111100:
-    handleAndSpeed(servoPwm, tocdo);
-    vitri = 0;
-    break;
-
   case 0b00011100:
   case 0b00001000:
-    handleAndSpeed(servoPwm, tocdo);
-    vitri = 1;
-    break;
-
   case 0b00010000:
   case 0b00111000:
+    // Chạy PID bình thường
     handleAndSpeed(servoPwm, tocdo);
-    vitri = -1;
+    vitri = 0;
     break;
 
   case 0b00001100:
@@ -338,53 +412,52 @@ void runforwardline(int tocdo) {
     vitri = 7;
     break;
 
-  case 0b11011000:
-  case 0b10011000:
-  case 0b11011100:
-  case 0b11101000:
-    // Các pattern nhiễu hoặc ngã ba chữ T một bên -> PID
-    handleAndSpeed(servoPwm, (baseSpeed * 50 / 100));
-    break;
 
   case 0b00000000:
-    // Xử lý rẽ ngay lập tức (không lùi, không chờ 200ms) nếu mất line ở góc cua
-    // gắt
+    // 1. Văng khỏi góc cua GẮT (Góc nhọn Z-turn / V-turn)
     if (vitri <= -7) {
-      // Line bên trái -> Rẽ trái: Trái lùi nhẹ/dừng, Phải tiến
-      speed_run(0, 200);
+      // Văng ở bên trái -> Quay tại chỗ gắt sang trái để tìm lại line
+      speed_run(-180, 180);
       break;
     } else if (vitri >= 7) {
-      // Line bên phải -> Rẽ phải: Trái tiến, Phải lùi nhẹ/dừng
-      speed_run(200, 0);
+      // Văng ở bên phải -> Quay tại chỗ gắt sang phải
+      speed_run(180, -180);
+      break;
+    }
+    // 2. Văng khi cua VỪA (Cua gắt nhưng chưa đến mức quay văng)
+    else if (vitri <= -3) {
+      // Lùi ôm cua trái để đưa đầu xe vòng lại vào line
+      speed_run(-150, 0);
+      break;
+    } else if (vitri >= 3) {
+      // Lùi ôm cua phải
+      speed_run(0, -150);
       break;
     }
 
-    // Xử lý vạch đứt (Zebra) hoặc mất line đường thẳng
+    // 3. Xử lý vạch đứt (Zebra) hoặc mất line đường thẳng (Khi vitri gần 0)
     if (!isLostLine) {
       isLostLine = true;
       lostLineTimer = millis();
     }
     {
       unsigned long dt = millis() - lostLineTimer;
-      if (dt < 300) {
-        // < 200ms: có thể vạch zebra/đứt → tiếp tục PID
-        handleAndSpeed(servoPwm, tocdo);
+      if (dt < 180) {
+        // < 180ms: Giả định là vạch đứt ngang → Lao thẳng qua bằng tốc độ hiện
+        // tại
+        speed_run(tocdo, tocdo);
+      } else if (dt < 400) {
+        // Hết 180ms mà không thấy line -> Đích thị là lọt ra ngoài sa bàn ->
+        // Lùi thẳng
+        speed_run(-150, -150);
       } else {
-        // >= 200ms: thực sự mất line
-
-        // Phase 1 (200ms ~ 400ms): Lùi thẳng
-        // Phase 2 (>= 400ms): Rẽ theo hướng line cuối cùng
-        if (dt < 400) {
-          speed_run(-150, -150); // Lùi thẳng
+        // Lùi mãi không thấy -> Xoay xe quét tìm
+        if (vitri > 0) {
+          speed_run(150, -150);
+        } else if (vitri < 0) {
+          speed_run(-150, 150);
         } else {
-          // Rẽ theo vitri để sweep tìm lại line
-          if (vitri > 0) {
-            speed_run(150, -100); // Line cuối ở phải → rẽ phải
-          } else if (vitri < 0) {
-            speed_run(-100, 150); // Line cuối ở trái → rẽ trái
-          } else {
-            speed_run(-150, -150); // Không rõ → tiếp tục lùi
-          }
+          speed_run(-150, -150);
         }
       }
     }

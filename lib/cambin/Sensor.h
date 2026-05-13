@@ -5,15 +5,14 @@
 #include <EEPROM.h>
 
 // 1. Cấu hình chân kết nối
-#define S0 5      
-#define S1 13     
-#define S2 12     
-#define SIG_PIN 35 
+#define S0 13
+#define S1 26
+#define S2 25
+#define SIG_PIN 35
 
-#define BUTTON1 32 
-#define BUZZER 2   
+#define BUTTON1 32
+#define BUZZER 2
 #define EEPROM_SIZE 64
-
 
 // 2. Khai báo biến toàn cục (Dùng extern để chia sẻ giữa các file)
 extern unsigned int sensorValue[8];

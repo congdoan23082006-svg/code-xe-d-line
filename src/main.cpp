@@ -3,42 +3,56 @@
 #include "Motion.h"
 #include "Sensor.h"
 #include "gripper.h"
+#include "encoder.h"
 #include <Arduino.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
+extern bool isMission1Active; // Khai báo tường minh để sửa lỗi scope
+
 // Biến canh thời gian cho bộ PID
 unsigned long lastTime = 0;
 
 void startPIDMode() {
   mode = 4;
-  mission1_deactivate(); // Tắt kết nối BLE để tập trung tài nguyên chạy xe
+  isMission1Active = false; // Khóa lệnh BLE thủ công, KHÔNG stopAdvertising() để tránh crash BLE stack
 
   beep(100);
   delay(100);
   beep(100);
   Serial.println("MODE 4: Bat dau chay PID (Tu Web UI)!");
-  display.clearDisplay();
-  display.setCursor(0, 10);
-  display.println("Mode 4:");
-  display.println("Running PID...");
-  display.display();
+  if (isOledOk) {
+    display.clearDisplay();
+    display.setCursor(0, 10);
+    display.println("Mode 4:");
+    display.println("Running PID...");
+    display.display();
+  }
 
   lastTime = millis();
   motion_reset();
   calPID = 1;
 }
+
 void startBinMode() {
   mode = 3;
-  mission1_deactivate();
+  isMission1Active = false; // Khóa lệnh BLE thủ công, KHÔNG stopAdvertising()
 
   beep(500);
   Serial.println("MODE 3: Kiem tra BIN (Tu Web UI)!");
-  display.clearDisplay();
-  display.setCursor(0, 10);
-  display.println("Mode 3:");
-  display.println("Kiem tra BIN");
-  display.display();
+  if (isOledOk) {
+    display.clearDisplay();
+    display.setCursor(0, 10);
+    display.println("Mode 3:");
+    display.println("Kiem tra BIN");
+    display.display();
+  }
 }
 
 void setup() {
+  // Tắt cảm biến sụt áp (Brownout Detector) để tránh reset khi bật Bluetooth gây sụt dòng
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+  
   Serial.begin(115200);
 
   // Khởi tạo các module hệ thống
@@ -47,20 +61,23 @@ void setup() {
   initOLED();
   mission1_init();
   gripper_init();
+  initEncoders();
 
   // Mặc định khởi động vào Mode 3 (chờ / kiểm tra)
   mode = 0;
 
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 10);
-  display.println("He thong san sang!");
-  display.setCursor(0, 25);
-  display.println("Mode 3: Kiem tra BIN");
-  display.setCursor(0, 40);
-  display.println("Nhan nut de doi Mode");
-  display.display();
+  if (isOledOk) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 10);
+    display.println("He thong san sang!");
+    display.setCursor(0, 25);
+    display.println("Mode 3: Kiem tra BIN");
+    display.setCursor(0, 40);
+    display.println("Nhan nut de doi Mode");
+    display.display();
+  }
 }
 
 void loop() {
@@ -157,7 +174,10 @@ void loop() {
     // Mode 2: Lấy ngưỡng (Học màu)
     for (int j = 0; j < 8; j++) {
       setMuxChannel(j);
+      delayMicroseconds(10);
+      analogRead(SIG_PIN); // Đọc bỏ để xả nhiễu
       delayMicroseconds(5);
+      
       sensorValue[j] = 4095 - analogRead(SIG_PIN);
 
       if (sensorValue[j] < black_value[j])
@@ -209,24 +229,6 @@ void loop() {
     // Gọi hàm chạy bám line theo PID
     runforwardline(baseSpeed);
 
-    // Hiển thị OLED (Cập nhật chậm để không làm lag PID)
-    static unsigned long lastUpdate = 0;
-    if (millis() - lastUpdate > 200) {
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setCursor(0, 0);
-      display.println("MODE 4: CHAY PID");
-
-      // Hiển thị số lần gặp ngã ba
-      display.setCursor(0, 15);
-      display.print("So nga ba:");
-
-      display.setTextSize(3); // Làm số lần thật to ở giữa màn hình
-      display.setCursor(45, 35);
-      display.printf("%d", crossLineCount);
-
-      display.display();
-      lastUpdate = millis();
-    }
+    // Hiển thị OLED trong Mode 4 hiện được xử lý tự động bên trong hàm runforwardline (file Motion.cpp)
   }
 }

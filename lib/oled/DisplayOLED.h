@@ -17,6 +17,7 @@
 
 // Khai báo đối tượng display để có thể dùng ở các file khác nếu cần
 extern Adafruit_SSD1306 display;
+extern bool isOledOk;
 
 // Khai báo nguyên mẫu hàm
 void initOLED();

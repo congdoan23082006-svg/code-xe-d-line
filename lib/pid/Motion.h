@@ -23,7 +23,7 @@
 // ==========================================
 // CÁC BIẾN TOÀN CỤC VÀ HÀM
 // ==========================================
-extern int turnAngle;
+extern int servoPwm;
 extern int vitri;
 extern int baseSpeed;
 extern volatile int calPID;
@@ -34,6 +34,7 @@ extern volatile float Kd;
 extern volatile int isLeft;
 extern volatile int isRight;
 extern volatile long posPID;
+extern bool whiteLineMode;
 
 void motion_init();
 void speed_run(int speedDC_left, int speedDC_right);

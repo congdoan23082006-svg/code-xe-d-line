@@ -1,0 +1,7 @@
+{
+  "name": "Motion",
+  "version": "1.0.0",
+  "description": "Motion control library",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

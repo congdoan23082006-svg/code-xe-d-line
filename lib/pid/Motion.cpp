@@ -19,6 +19,7 @@ volatile long posPID = 0;
 int dashedLineCount = 0; // Đếm số vạch đứt
 unsigned long runStartTime = 0;
 bool isRunTimerStarted = false;
+bool whiteLineMode = false;
 
 void updateInfoOLED(unsigned long timeMs) {
   if (!isOledOk)
@@ -211,10 +212,10 @@ void runforwardline(int tocdo) {
   // LOGIC QUÃNG ĐƯỜNG
   // =========================================================================
 
-  float dist_StartSprint = 276;
+  float dist_StartSprint = 250;
   float dist_EndSprint =
-      350.0; // Mốc 2: Đi được 350cm thì kết thúc vút thẳng, quay lại PID
-  float dist_StopAll = 500.0; // Mốc 3: Đi đủ 500cm thì dừng xe vĩnh viễn (Đích)
+      300; // Mốc 2: Đi được 350cm thì kết thúc vút thẳng, quay lại PID
+  float dist_StopAll = 420.0; // Mốc 3: Đi đủ 500cm thì dừng xe vĩnh viễn (Đích)
 
   if (currentDistance >= dist_StopAll) {
     // 3. Đến đích -> Phanh chết vĩnh viễn
@@ -230,7 +231,6 @@ void runforwardline(int tocdo) {
   }
 
   // ── White line mode (line trắng nền đen) ──────────────────────────
-  static bool whiteLineMode = false;
   // -- Biến "Thả PID" sau khi qua đoạn Line Trắng --
   static bool hasPassedWhiteLine = false;      // Đã kích hoạt boost chưa?
   static unsigned long whiteLineExitTime = 0;  // Thời điểm vừa thoát Line Trắng
@@ -239,19 +239,24 @@ void runforwardline(int tocdo) {
   static bool isBoosting = false;              // Đang trong cú vọt không?
   int blackCount = __builtin_popcount(sensor); // Đếm số mắt ĐEN gốc
 
-  // 1. Điều kiện VÀO vùng line trắng (Nền đen 5-7 mắt, có mắt trắng ở giữa)
-  if (!whiteLineMode && blackCount >= 5 && blackCount <= 7) {
-    uint8_t whiteMask = ~sensor;
-    if (whiteMask & 0b00111100) { // Có mắt trắng ở các kênh 2,3,4,5
+  // 1. Điều kiện VÀO vùng line trắng (Nền đen, line trắng)
+  if (!whiteLineMode) {
+    // Rìa trái có đen, rìa phải có đen, và ở giữa có trắng
+    bool blackOnLeft = (sensor & 0b11000000) != 0;
+    bool blackOnRight = (sensor & 0b00000011) != 0;
+    bool whiteInMiddle = (~sensor & 0b00111100) != 0;
+    
+    if (blackOnLeft && blackOnRight && whiteInMiddle && blackCount >= 4) {
       whiteLineMode = true;
       hasPassedWhiteLine = false; // Reset khi vào lại đoạn trắng
       waitingToBoost = false;
     }
   }
 
-  // 2. Điều kiện THOÁT vùng line trắng (Về line đen khi thấy 1-3 mắt đen)
-  if (whiteLineMode &&
-      (blackCount == 1 || blackCount == 2 || blackCount == 3)) {
+  // 2. Điều kiện THOÁT vùng line trắng (Trở về nền trắng)
+  // Khôi phục lại điều kiện cũ của bạn: đếm 1-3 mắt đen là thoát.
+  // Vì nếu vừa thoát ra gặp cua gắt ngay, 1 bên rìa sẽ đè vạch đen, điều kiện 2 bên cùng trắng sẽ bị sai!
+  else if (whiteLineMode && (blackCount == 1 || blackCount == 2 || blackCount == 3)) {
     whiteLineMode = false;
     waitingToBoost = true;        // Bắt đầu đếm ngược 2 giây
     whiteLineExitTime = millis(); // Ghi nhớ thời điểm vừa thoát
@@ -278,27 +283,39 @@ void runforwardline(int tocdo) {
   // (Ngăn không cho các pattern rác này lọt vào hàm PID để tránh làm hỏng
   // biến lastPos và lịch sử thuật toán).
   // =========================================================================
-  if (processed_sensor == 0b11011000 || processed_sensor == 0b10011000 || 
-      processed_sensor == 0b11011100 || processed_sensor == 0b11101000 || 
-      processed_sensor == 0b10111000 || processed_sensor == 0b11001000 || 
-      processed_sensor == 0b10101000 || processed_sensor == 0b11001100 || 
-      processed_sensor == 0b11101100 || processed_sensor == 0b10001000 || 
+  static unsigned long lastTurnTime = 0;
+
+  if (processed_sensor == 0b11011000 || processed_sensor == 0b10011000 ||
+      processed_sensor == 0b11011100 || processed_sensor == 0b11101000 ||
+      processed_sensor == 0b10111000 || processed_sensor == 0b11001000 ||
+      processed_sensor == 0b10101000 || processed_sensor == 0b11001100 ||
+      processed_sensor == 0b11101100 || processed_sensor == 0b10001000 ||
       processed_sensor == 0b10001100 || processed_sensor == 0b10011100) {
-    speed_run(-120, 220);
-    delay(150);
-    vitri = -7;
+    if (millis() - lastTurnTime > 300) {
+      speed_run(0, 0);
+      delay(15);
+      speed_run(-120, 220);
+      delay(135);
+      vitri = -7;
+      lastTurnTime = millis();
+    }
     return;
   }
 
-  if (processed_sensor == 0b00011011 || processed_sensor == 0b00011001 || 
-      processed_sensor == 0b00111011 || processed_sensor == 0b00010111 || 
-      processed_sensor == 0b00011101 || processed_sensor == 0b00010011 || 
-      processed_sensor == 0b00010101 || processed_sensor == 0b00110011 || 
-      processed_sensor == 0b00110111 || processed_sensor == 0b00010001 || 
+  if (processed_sensor == 0b00011011 || processed_sensor == 0b00011001 ||
+      processed_sensor == 0b00111011 || processed_sensor == 0b00010111 ||
+      processed_sensor == 0b00011101 || processed_sensor == 0b00010011 ||
+      processed_sensor == 0b00010101 || processed_sensor == 0b00110011 ||
+      processed_sensor == 0b00110111 || processed_sensor == 0b00010001 ||
       processed_sensor == 0b00110001 || processed_sensor == 0b00111001) {
-    speed_run(220, -120);
-    delay(150);
-    vitri = 7;
+    if (millis() - lastTurnTime > 300) {
+      speed_run(0, 0);
+      delay(15);
+      speed_run(220, -120);
+      delay(135);
+      vitri = 7;
+      lastTurnTime = millis();
+    }
     return;
   }
 
@@ -387,9 +404,13 @@ void runforwardline(int tocdo) {
   case 0b11111100:
   case 0b11111110:
     // Pattern 90 độ trái hoặc ngã ba -> Hardcode rẽ gắt
-    speed_run(-120, 220);
-    delay(150);
-    vitri = -7;
+    if (millis() - lastTurnTime > 300) {
+
+      speed_run(-120, 220);
+      delay(135);
+      vitri = -7;
+      lastTurnTime = millis();
+    }
     break;
 
   case 0b01100000:
@@ -407,31 +428,30 @@ void runforwardline(int tocdo) {
   case 0b00111111:
   case 0b01111111:
     // Pattern 90 độ phải hoặc ngã ba -> Hardcode rẽ gắt
-    speed_run(220, -120);
-    delay(150);
-    vitri = 7;
+    if (millis() - lastTurnTime > 300) {
+      speed_run(220, -120);
+      delay(135);
+      vitri = 7;
+      lastTurnTime = millis();
+    }
     break;
-
 
   case 0b00000000:
     // 1. Văng khỏi góc cua GẮT (Góc nhọn Z-turn / V-turn)
     if (vitri <= -7) {
       // Văng ở bên trái -> Quay tại chỗ gắt sang trái để tìm lại line
-      speed_run(-180, 180);
+      speed_run(-150, 150);
       break;
     } else if (vitri >= 7) {
-      // Văng ở bên phải -> Quay tại chỗ gắt sang phải
-      speed_run(180, -180);
+      speed_run(150, -150);
       break;
     }
     // 2. Văng khi cua VỪA (Cua gắt nhưng chưa đến mức quay văng)
     else if (vitri <= -3) {
-      // Lùi ôm cua trái để đưa đầu xe vòng lại vào line
-      speed_run(-150, 0);
+      speed_run(-2, 0);
       break;
     } else if (vitri >= 3) {
-      // Lùi ôm cua phải
-      speed_run(0, -150);
+      speed_run(0, -210);
       break;
     }
 

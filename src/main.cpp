@@ -4,6 +4,8 @@
 #include "Sensor.h"
 #include "gripper.h"
 #include "encoder.h"
+#include "NhiemVu2.h"
+#include "Button.h"
 #include <Arduino.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
@@ -12,6 +14,7 @@ extern bool isMission1Active; // Khai báo tường minh để sửa lỗi scope
 
 // Biến canh thời gian cho bộ PID
 unsigned long lastTime = 0;
+unsigned long bootTime = 0;
 
 void startPIDMode() {
   mode = 4;
@@ -78,93 +81,130 @@ void setup() {
     display.println("Nhan nut de doi Mode");
     display.display();
   }
+  bootTime = millis();
 }
 
 void loop() {
   mission1_loop();
 
-  // 1. Quản lý việc ấn nút chuyển Mode (1 -> 2 -> 3 -> 4 -> 1...)
-  if (isBtn1Clicked()) {
-    if (mode == 1) {
-      mission1_deactivate(); // Thoát khỏi Mode 1 (BLE) thì phải tắt BLE
-
-
-      
+  // Chỉ cho phép đọc nút sau khi khởi động 1 giây để tránh nhiễu nguồn
+  if (millis() - bootTime > 1000) {
+    // Xóa cờ nhiễu phát sinh trong lúc khởi động (chỉ chạy 1 lần)
+    static bool cleared = false;
+    if (!cleared) {
+      btn1_clicked = false;
+      cleared = true;
     }
 
-    mode++;
-    if (mode > 4)
-      mode = 1;
+    // 1. Quản lý việc ấn nút chuyển Mode (1 -> 2 -> 3 -> 4 -> 1...)
+    static unsigned long btnPressTime = 0;
+    static bool isPressing = false;
+    static bool longPressTriggered = false;
 
-    if (mode == 1) {
-      speed_run(0, 0);
-      beep(100);
-      delay(80);
-      beep(100);
-      delay(80);
-      beep(100);
-      Serial.println("====================================");
-      Serial.println("MODE 1: Mission 1 BLE Manual");
-      mission1_activate();
-
-      display.clearDisplay();
-      display.setCursor(0, 10);
-      display.println("Mode 1:");
-      display.println("BLE Control");
-      display.println("ROBOT_2026");
-      display.display();
-    } else if (mode == 2) {
-      beep(100);
-      Serial.println("====================================");
-      Serial.println("MODE 2: Bat dau hoc mau... Hay quet di quet lai!");
-
-      display.clearDisplay();
-      display.setCursor(0, 10);
-      display.println("Mode 2:");
-      display.println("Dang hoc mau...");
-      display.display();
-
-      for (int i = 0; i < 8; i++) {
-        black_value[i] = 4095;
-        white_value[i] = 0;
+    if (isBtn1Pressed()) {
+      if (!isPressing) {
+        isPressing = true;
+        btnPressTime = millis();
+        longPressTriggered = false;
+      } else {
+        // Đang giữ nút, kiểm tra nếu giữ trên 1 giây
+        if (!longPressTriggered && (millis() - btnPressTime > 1000)) {
+          longPressTriggered = true;
+          // === XỬ LÝ LONG PRESS (VÀO NHIỆM VỤ 2) ===
+          if (mode == 1) mission1_deactivate();
+          
+          mode = 5;
+          beep(200); delay(100); beep(500); // Kêu bíp dài báo hiệu
+          Serial.println("MODE 5: Vao Nhiem Vu 2 (Long Press)!");
+          if (isOledOk) {
+            display.clearDisplay();
+            display.setCursor(0, 10);
+            display.println("Mode 5:");
+            display.println("Giai Me Cung!");
+            display.display();
+          }
+          nhiemvu2_start();
+        }
       }
-    } else if (mode == 3) {
-      beep(500);
-      Serial.println("MODE 3: Da hoc xong! Dang luu vao EEPROM...");
+    } else {
+      if (isPressing) {
+        isPressing = false;
+        // === XỬ LÝ SHORT CLICK (CHUYỂN MODE BÌNH THƯỜNG) ===
+        if (!longPressTriggered) {
+          if (mode == 1) mission1_deactivate();
 
-      display.clearDisplay();
-      display.setCursor(0, 10);
-      display.println("Dang Luu EEPROM...");
-      display.display();
+          mode++;
+          // Bấm ngắn chỉ xoay vòng 1 -> 4
+          if (mode > 4) mode = 1;
 
-      for (int i = 0; i < 8; i++) {
-        compare_value[i] = (black_value[i] + white_value[i]) / 2;
+          if (mode == 1) {
+            speed_run(0, 0);
+            beep(100); delay(80); beep(100); delay(80); beep(100);
+            Serial.println("====================================");
+            Serial.println("MODE 1: Mission 1 BLE Manual");
+            mission1_activate();
 
-        EEPROM.write(2 * i, black_value[i] >> 8);
-        EEPROM.write((2 * i) + 1, black_value[i] & 0xFF);
-        EEPROM.write(16 + (2 * i), white_value[i] >> 8);
-        EEPROM.write(17 + (2 * i), white_value[i] & 0xFF);
+            display.clearDisplay();
+            display.setCursor(0, 10);
+            display.println("Mode 1:");
+            display.println("BLE Control");
+            display.println("ROBOT_2026");
+            display.display();
+          } else if (mode == 2) {
+            beep(100);
+            Serial.println("====================================");
+            Serial.println("MODE 2: Bat dau hoc mau... Hay quet di quet lai!");
+
+            display.clearDisplay();
+            display.setCursor(0, 10);
+            display.println("Mode 2:");
+            display.println("Dang hoc mau...");
+            display.display();
+
+            for (int i = 0; i < 8; i++) {
+              black_value[i] = 4095;
+              white_value[i] = 0;
+            }
+          } else if (mode == 3) {
+            beep(500);
+            Serial.println("MODE 3: Da hoc xong! Dang luu vao EEPROM...");
+
+            display.clearDisplay();
+            display.setCursor(0, 10);
+            display.println("Dang Luu EEPROM...");
+            display.display();
+
+            for (int i = 0; i < 8; i++) {
+              compare_value[i] = (black_value[i] + white_value[i]) / 2;
+
+              EEPROM.write(2 * i, black_value[i] >> 8);
+              EEPROM.write((2 * i) + 1, black_value[i] & 0xFF);
+              EEPROM.write(16 + (2 * i), white_value[i] >> 8);
+              EEPROM.write(17 + (2 * i), white_value[i] & 0xFF);
+            }
+            EEPROM.commit();
+            Serial.println("Luu thanh cong! Chuyen sang che do doc.");
+            Serial.println("====================================");
+          } else if (mode == 4) {
+            beep(100); delay(100); beep(100);
+            Serial.println("MODE 4: Bat dau chay PID!");
+
+            display.clearDisplay();
+            display.setCursor(0, 10);
+            display.println("Mode 4:");
+            display.println("Running PID...");
+            display.display();
+
+            // Reset thời gian và biến đếm cho PID
+            lastTime = millis();
+            motion_reset();
+            calPID = 1;
+          }
+        }
       }
-      EEPROM.commit();
-      Serial.println("Luu thanh cong! Chuyen sang che do doc.");
-      Serial.println("====================================");
-    } else if (mode == 4) {
-      beep(100);
-      delay(100);
-      beep(100);
-      Serial.println("MODE 4: Bat dau chay PID!");
-
-      display.clearDisplay();
-      display.setCursor(0, 10);
-      display.println("Mode 4:");
-      display.println("Running PID...");
-      display.display();
-
-      // Reset thời gian và biến đếm cho PID
-      lastTime = millis();
-      motion_reset();
-      calPID = 1;
     }
+
+  // Loại bỏ hoàn toàn kiểm tra nút 2 ở đây
   }
 
   // 2. Thực thi liên tục theo Mode hiện tại
@@ -230,5 +270,8 @@ void loop() {
     runforwardline(baseSpeed);
 
     // Hiển thị OLED trong Mode 4 hiện được xử lý tự động bên trong hàm runforwardline (file Motion.cpp)
+  } else if (mode == 5) {
+    // Mode 5: Nhiệm vụ 2 (Giải mê cung)
+    nhiemvu2_loop();
   }
 }

@@ -21,13 +21,14 @@ extern unsigned int white_value[8];
 extern unsigned int compare_value[8];
 extern volatile unsigned char sensor;
 extern int mode;
+extern volatile bool btn1_clicked;
 
 // 3. Khai báo các hàm
 void sensor_init(); // Hàm gộp các lệnh setup phần cứng
 void setMuxChannel(int channel);
 void beep(int timer);
 void readEeprom();
-bool isBtn1Clicked();
+bool isBtn1Clicked_ISR();
 void read_sensor_74hc4067();
 
 #endif

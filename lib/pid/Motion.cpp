@@ -448,7 +448,7 @@ void runforwardline(int tocdo) {
     }
     // 2. Văng khi cua VỪA (Cua gắt nhưng chưa đến mức quay văng)
     else if (vitri <= -3) {
-      speed_run(-2, 0);
+      speed_run(-210, 0);
       break;
     } else if (vitri >= 3) {
       speed_run(0, -210);

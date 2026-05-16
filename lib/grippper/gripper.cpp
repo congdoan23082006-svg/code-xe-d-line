@@ -40,7 +40,7 @@ void gripper_init() {
   ledcAttachPin(servoPin, servoChannel);
 
   // 3. Di chuyển Servo về góc 0 độ mặc định
-  gripper_write(0);
+  gripper_write(30);
 }
 
 void gripper_grab() {

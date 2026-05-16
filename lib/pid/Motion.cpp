@@ -7,7 +7,7 @@
 // Chứa mảng sensor và sensorValue
 int servoPwm = 0;
 int vitri = 0;
-int baseSpeed = 170; // Dải PWM 0-255 (chỉnh theo yêu cầu)
+int baseSpeed = 140; // Dải PWM 0-255 (chỉnh theo yêu cầu)
 volatile int calPID = 0;
 volatile long lastPos = 0;
 volatile float Kp = 2;
@@ -439,6 +439,7 @@ void runforwardline(int tocdo) {
   case 0b00000000:
     // 1. Văng khỏi góc cua GẮT (Góc nhọn Z-turn / V-turn)
     if (vitri <= -7) {
+      
       // Văng ở bên trái -> Quay tại chỗ gắt sang trái để tìm lại line
       speed_run(-150, 150);
       break;
